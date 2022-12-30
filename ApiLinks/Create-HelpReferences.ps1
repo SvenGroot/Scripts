@@ -22,7 +22,9 @@ param(
     [string[]]
     $LiteralPath,
     [Parameter(Mandatory=$true, Position=1)][string]$HelpPath,
-    [Parameter(Mandatory=$true, Position=2)][string]$RefsPath
+    [Parameter(Mandatory=$true, Position=2)][string]$RefsPath,
+    [Parameter(Mandatory=$false)][Switch]$Cpp,
+    [Parameter(Mandatory=$false)][string]$CppNamespace
 )
 begin {
     $ErrorActionPreference = "Stop"
@@ -34,9 +36,18 @@ begin {
             $refs[$pair.Name] = $pair.Value
         }
     } else {
-        $refs["#apiPrefix"] = "https://learn.microsoft.com/dotnet/api/"
+        if ($Cpp) {
+            $refs["#apiPrefix"] = "https://en.cppreference.com/w/cpp/"
+        } else {
+            $refs["#apiPrefix"] = "https://learn.microsoft.com/dotnet/api/"
+        }
+
         $refs["#prefix"] = "https://example.com/"
         $refs["#suffix"] = ".htm"
+    }
+
+    if ($Cpp) {
+        $tags = [xml](Get-Content $HelpPath)
     }
 }
 process {
@@ -48,12 +59,21 @@ process {
 
     $items | Get-Content | ForEach-Object {
         # Find `text` blocks, only if not preceeded by [ (that's already a link).
-        $m = $_ | Select-String '(?<!\[)`(?<ref>[A-Z][a-zA-Z0-9.,<>() ]*?)`' -AllMatches -CaseSensitive
+        $regex = '(?<!\[)`(?<ref>[A-Z][a-zA-Z0-9.,<>() ]*?)`'
+        if ($Cpp) {
+            $regex = '(?<!\[)`(?<ref>[a-z]([a-zA-Z0-9:_<>()]|(, ?))*?)`'
+        }
+
+        $m = $_ | Select-String $regex -AllMatches -CaseSensitive
         if ($m) {
             $m.Matches | ForEach-Object {
                 Write-Host $_.Groups["ref"]
-                Resolve-Reference $HelpPath $_.Groups["ref"] $refs
-            }    
+                if ($Cpp) {
+                    Resolve-CppReference $tags $_.Groups["ref"] $CppNamespace $refs
+                } else {
+                    Resolve-Reference $HelpPath $_.Groups["ref"] $refs
+                }
+            }
         }
     }
 }

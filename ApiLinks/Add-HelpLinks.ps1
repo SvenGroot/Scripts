@@ -21,7 +21,8 @@ param(
     [ValidateNotNullOrEmpty()]
     [string[]]
     $LiteralPath,
-    [Parameter(Mandatory=$true, Position=1)][string]$RefsPath
+    [Parameter(Mandatory=$true, Position=1)][string]$RefsPath,
+    [Parameter(Mandatory=$false)][Switch]$Cpp
 )
 begin {
     $ErrorActionPreference = "Stop"
@@ -41,7 +42,13 @@ process {
         $content = Get-Content $item | ForEach-Object {
             Write-Host $_
             # Find `text` blocks, only if not preceeded by [ (that's already a link).
-            $_ -creplace "(?<!\[)``(?<ref>[A-Z][a-zA-Z0-9.,<>() ]*?)``",{
+            # Find `text` blocks, only if not preceeded by [ (that's already a link).
+            $regex = '(?<!\[)`(?<ref>[A-Z][a-zA-Z0-9.,<>() ]*?)`'
+            if ($Cpp) {
+                $regex = '(?<!\[)`(?<ref>[a-z]([a-zA-Z0-9:_<>()]|(, ?))*?)`'
+            }
+
+            $_ -creplace $regex,{
                 $text = $_.Value
                 $link = Resolve-Link $_.Groups["ref"] $refs $labels
                 if ($link) {
