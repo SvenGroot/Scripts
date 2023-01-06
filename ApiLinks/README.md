@@ -8,6 +8,10 @@ a directory with help files (created with [Sandcastle Help File Builder](https:/
 and those to a json file. Any identifiers it can't resolve will be set to "!UNKNOWN!" so you can
 find them and resolve them manually.
 
+`Create-HelpReferences.ps1` can also be used for C++ doxygen documentation. In that case, pass the
+`-Cpp` and `-CppNamespace` arguments, and use the doxygen tag file instead of a directory for the
+`-HelpPath`.
+
 Link targets in the json will use the file base name only. Set the `#prefix` and `#suffix` values to
 create valid links.
 

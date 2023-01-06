@@ -64,14 +64,28 @@ function Resolve-CppReference([xml]$tags, [string]$reference, [string]$namespace
             }
         }
 
-        $className = "$namespace::$name"
+        $className = $name
+        if (-not $name.StartsWith("$namespace::")) {
+            $className = "$namespace::$name"
+        }
+
         for ($i = $first + 1; $i -lt $components.Count - 1; $i += 1) {
             $className += "::$($components[$i])"
         }
 
         if (-not $isFunction) {
-            $name = "$className::$leafNode"
+            if ($components.Length - $first -gt 1) {
+                $name = "$className::$leafName"
+            }
+            else {
+                $name = $className
+            }
+
+            Write-Host "$name"
             $finalNode = $tags.SelectSingleNode("//compound[@kind='class' and name='$name']")
+            if (-not $finalNode) {
+                $finalNode = $tags.SelectSingleNode("//compound[@kind='namespace' and name='$name']")
+            }
         }
         
         if (-not $startNode) {
@@ -99,7 +113,7 @@ function Resolve-CppReference([xml]$tags, [string]$reference, [string]$namespace
 
         $xpath += "member["
         if ($isFunction) {
-            $xpath += "@kind='function' and "
+            $xpath += "(@kind='function' or @kind='define') and "
         }
 
         $xpath += "name='$leafName']"

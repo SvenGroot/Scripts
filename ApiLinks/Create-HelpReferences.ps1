@@ -61,7 +61,7 @@ process {
         # Find `text` blocks, only if not preceeded by [ (that's already a link).
         $regex = '(?<!\[)`(?<ref>[A-Z][a-zA-Z0-9.,<>() ]*?)`'
         if ($Cpp) {
-            $regex = '(?<!\[)`(?<ref>[a-z]([a-zA-Z0-9:_<>()]|(, ?))*?)`'
+            $regex = '(?<!\[)`(?<ref>[A-Za-z]([a-zA-Z0-9:_<>()]|(, ?))*?)`'
         }
 
         $m = $_ | Select-String $regex -AllMatches -CaseSensitive
