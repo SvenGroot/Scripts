@@ -81,14 +81,18 @@ function Resolve-CppReference([xml]$tags, [string]$reference, [string]$namespace
                 $name = $className
             }
 
-            Write-Host "$name"
             $finalNode = $tags.SelectSingleNode("//compound[@kind='class' and name='$name']")
             if (-not $finalNode) {
                 $finalNode = $tags.SelectSingleNode("//compound[@kind='namespace' and name='$name']")
             }
+
+            if (-not $finalNode -and $components.Length -eq 1) {
+                # Workaround for ends-with not being supported.
+                $finalNode = $tags.SelectSingleNode("//compound[@kind='class' and substring(name, string-length(name) - string-length('::$leafName') + 1)  = '::$leafName']")
+            }
         }
         
-        if (-not $startNode) {
+        if (-not $finalNode) {
             $startNode = $tags.SelectSingleNode("//compound[@kind='class' and name='$className']")
             if ($components.Length - $first -eq 1) {
                 $finalNode = $startNode
