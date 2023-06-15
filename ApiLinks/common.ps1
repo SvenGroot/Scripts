@@ -162,7 +162,6 @@ function Resolve-Link([string]$reference, $refs, $labels) {
         return $null
     }
 
-    # TODO: Pick one.
     if (-not $link.GetType().IsArray) {
         $link = @($link)
     }

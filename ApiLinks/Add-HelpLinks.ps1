@@ -39,8 +39,17 @@ process {
     foreach ($item in $items)
     {
         $labels = [System.Collections.Generic.SortedDictionary[String, object]]::new()
+        $existingLabels = [System.Collections.Generic.SortedDictionary[String, object]]::new()
         $content = Get-Content $item | ForEach-Object {
             Write-Host $_
+
+            # Check for existing labels.
+            $regex = '^\[(?<label>.*?)\]:\s*(?<target>.*?)\s*$'
+            if ($_ -cmatch $regex) {
+                $existingLabels[$Matches.label] = $Matches.target
+                return
+            }
+
             # Find `text` blocks, only if not preceded by [ (that's already a link).
             $regex = '(?<!\[)`(?<ref>[A-Z][a-zA-Z0-9.,<>() ]*?)`'
             if ($Cpp) {
@@ -64,19 +73,34 @@ process {
 
         $content | Set-Content $item
 
-        "" | Out-File $item -Append
+        if ($existingLabels.Count -eq 0 && $labels.Count -gt 0) {
+            "" | Out-File $item -Append
+        }
 
         $prefix = $refs["#prefix"]
         $suffix = $refs["#suffix"]
         $apiPrefix = $refs["#apiPrefix"]
         $labels.GetEnumerator() | ForEach-Object {
+            Write-Host $_
             if ($_.Value.Contains("://")) {
-                "[$($_.Key)]: $($_.Value)"
+                $target = "$($_.Value)"
             } elseif ($_.Value.StartsWith("#")) {
-                "[$($_.Key)]: $apiPrefix$($_.Value.Substring(1))"
+                $target = "$apiPrefix$($_.Value.Substring(1))"
             } else {
-                "[$($_.Key)]: $prefix$($_.Value)$suffix"
+                $target = "$prefix$($_.Value)$suffix"
             }
+
+            if ($existingLabels.ContainsKey($_.Key)) {
+                if ($existingLabels[$_.Key] -ne $target) {
+                    Write-Warning "Replacing label $($_.Key): $($existingLabels[$_.Key]) -> $target"
+                }
+            }
+
+            $existingLabels[$_.Key] = $target
+        }
+
+        $existingLabels.GetEnumerator() | ForEach-Object {
+            "[$($_.Key)]: $($_.Value)"
         } | Out-File $item -Append
     }
 }
