@@ -4,13 +4,16 @@ function Resolve-Reference([string]$folder, [string]$reference, $refs) {
         return
     }
 
+    $isMethod = $false
     $original = $reference
     if ($reference.EndsWith("()")) {
         $isMethod = $true
         $reference = $reference.Substring(0, $reference.Length-2)
     }
 
-    $reference = $reference.Replace(".", "_");
+    $reference = Replace-Generics $reference $isMethod
+    $reference = $reference.Replace(".", "_")
+    Write-Verbose $reference
     $files = Get-ChildItem $folder | Where-Object { $_.Name -match "_$reference[_.]"} | ForEach-Object { $_.BaseName }
     if ($isMethod) {
         $matching = $files | Where-Object { $_.StartsWith("M_") -or $_.StartsWith("Overload_") }
@@ -264,4 +267,46 @@ function Get-Anchor([string]$Heading) {
     }
 
     return $result.ToString()
+}
+
+function Replace-Generics([string]$Name, [bool]$IsMethod) {
+    $index = $Name.IndexOf('<')
+    if ($index -lt 0) {
+        return $Name
+    }
+
+    $after = ""
+    $dotIndex = $Name.LastIndexOf("_")
+    if ($index -lt $dotIndex) {
+        $after = $Name.Substring($dotIndex)
+        $Name = $Name.Substring(0, $dotIndex)
+        $IsMethod = $false
+    }
+
+    $result = $Name.Substring(0, $index) + "_"
+    if ($IsMethod) {
+        $result += "_"
+    }
+
+    $level = 0
+    $argCount = 1
+    for ($x = 0; $x -lt $Name.Length; $x += 1) {
+        switch ($Name[$x]) {
+            '<' { $level += 1 }
+            '>' { 
+                $level -= 1 
+            }
+            ',' { 
+                if ($level -eq 1) {
+                    $argCount += 1
+                }
+            }
+        }
+
+        if ($end) {
+            break
+        }
+    }
+
+    return $result + "$argCount" + $after
 }
