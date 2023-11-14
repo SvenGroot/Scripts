@@ -1,3 +1,14 @@
+$script:frameworkRefs = $null
+
+function Get-FrameworkRefs() {
+    if ($script:frameworkRefs) {
+        return $script:frameworkRefs
+    }
+
+    $script:frameworkRefs = Get-Content "$PSScriptRoot/framework.json" | ConvertFrom-Json -AsHashtable
+    return $script:frameworkRefs
+}
+
 function Resolve-Reference([string]$folder, [string]$reference, $refs) {
     if ($refs.ContainsKey($reference)) {
         Write-Host "  Already found"
@@ -6,12 +17,14 @@ function Resolve-Reference([string]$folder, [string]$reference, $refs) {
 
     $isMethod = $false
     $original = $reference
+    $originalNoParens = $reference
     if ($reference.EndsWith("()")) {
         $isMethod = $true
         $reference = $reference.Substring(0, $reference.Length-2)
+        $originalNoParens = $reference
     }
 
-    $reference = Replace-Generics $reference $isMethod
+    $reference = Update-Generics $reference $isMethod
     $reference = $reference.Replace(".", "_")
     Write-Verbose $reference
     $files = Get-ChildItem $folder | Where-Object { $_.Name -match "_$reference[_.]"} | ForEach-Object { $_.BaseName }
@@ -21,6 +34,33 @@ function Resolve-Reference([string]$folder, [string]$reference, $refs) {
         $matching = $files | Where-Object { $_.StartsWith("T_") }
         if (-not $matching) {
             $matching = $files
+        }
+    }
+
+    if (-not $matching) {
+        $framework = Get-FrameworkRefs
+        $key = $null
+        if ($framework.ContainsKey($originalNoParens)) {
+            $key = $originalNoParens
+            $matching = $refs[$originalNoParens]
+
+        } else {
+            $pairs = $framework.GetEnumerator() | Where-Object {
+                $_.Key.EndsWith("." + $originalNoParens)
+            } | Select-Object
+
+            if ($pairs) {
+                $key = $pairs.Key
+                $matching = $pairs.Value
+            }
+        }
+
+        if ($key -and -not $matching) {
+            $matching = $key.ToLowerInvariant()
+        }
+
+        $matching = $matching | ForEach-Object {
+            "#" + $matching
         }
     }
 
@@ -269,7 +309,7 @@ function Get-Anchor([string]$Heading) {
     return $result.ToString()
 }
 
-function Replace-Generics([string]$Name, [bool]$IsMethod) {
+function Update-Generics([string]$Name, [bool]$IsMethod) {
     $index = $Name.IndexOf('<')
     if ($index -lt 0) {
         return $Name
