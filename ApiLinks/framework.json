@@ -2,6 +2,7 @@
     "System.Boolean": null,
     "System.Byte": null,
     "System.Collections.Generic.KeyValuePair<TKey, TValue>": "system.collections.generic.keyvaluepair-2",
+    "System.ComponentModel.DescriptionAttribute": null,
     "System.DateTime": null,
     "System.Decimal": null,
     "System.Double": null,
