@@ -22,6 +22,22 @@ param(
     [string[]]
     $LiteralPath
 )
+begin {
+    Add-Type @"
+namespace Ookii.Scripts;
+
+public class InterlockedInt32
+{
+    private int _value;
+
+    public int Value => _value;
+
+    public void Increment() => System.Threading.Interlocked.Increment(ref _value);
+}
+"@
+
+    $warningCount = [Ookii.Scripts.InterlockedInt32]::new()
+}
 process {
     if ($Path) {
         $items = Get-Item -Path $Path
@@ -46,6 +62,7 @@ process {
 
                 if ($_ -match "\[[^\]]*$") {
                     Write-Warning "Possible multiline link not checked: $_"
+                    $warningCount.Increment()
                 }
 
                 if ($_ -match "^\[[^\]]*\]:\s*(?<link>.*)$") {
@@ -55,6 +72,7 @@ process {
         }
 
         $links | Foreach-Object -Parallel {
+            $count = $using:warningCount
             $link = $_
             $index = $link.IndexOf("#")
             $anchor = $null
@@ -63,31 +81,60 @@ process {
                 $anchor = $_.Substring($index + 1)
             }
 
+            if ($link.Contains("\")) {
+                Write-Warning "Contains backslash: $link"
+                $count.Increment()
+            }
+
             if ($link.Contains("://")) {
                 $result = Invoke-WebRequest -SkipHttpErrorCheck $link
                 if ($result.StatusCode -eq 200) {
                     Write-Host "OK: $link"
                 } else {
                     Write-Warning "Status $($result.StatusCode): $link"
+                    $count.Increment()
                 }
             } else {
                 if ($link -eq "") {
                     $fullPath = $using:item.FullName
                 } else {
                     $fullPath = Join-Path $using:item.DirectoryName $link
+                    $pathTail = $link.Replace("/", "\")
+                    while ($pathTail.StartsWith("..\")) {
+                        $pathTail = $pathTail.Substring(3)
+                    }
                 }
 
                 if ($link -eq "" -or (Test-Path $fullPath)) {
                     . "$using:PSScriptRoot/common.ps1"
                     if ($anchor -and (-not (Resolve-AnchorTarget $fullPath $anchor))) {
                         Write-Warning "Anchor not found: $_"
+                        $count.Increment()
                     } else {
-                        Write-Host "OK: $_"
+                        $canonical = &"$using:PSScriptRoot/../Get-CanonicalPath.ps1" $fullPath
+                        if ($link -eq "" -or $canonical.EndsWith($pathTail)) {
+                            Write-Host "OK: $_"
+
+                        } else {
+                            Write-Warning "Wrong case: $link ($fullPath != $canonical)"
+                            $count.Increment()
+                        }
                     }
                 } else {
                     Write-Warning "Not found: $link"
+                    $count.Increment()
                 }
             }
         }
     }
+}
+end {
+    Write-Host ""
+    if ($warningCount.Value -eq 0) {
+        $color = "Green"
+    } else {
+        $color = "Yellow"
+    }
+
+    Write-Host "$($warningCount.Value) warnings" -ForegroundColor $color
 }
