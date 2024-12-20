@@ -23,20 +23,14 @@ param(
     $LiteralPath
 )
 begin {
-    Add-Type @"
-namespace Ookii.Scripts;
+    class LinkInfo {
+        [string]$Path
+        [int]$Line
+        [string]$Link
+        [string]$Warning
+    }
 
-public class InterlockedInt32
-{
-    private int _value;
-
-    public int Value => _value;
-
-    public void Increment() => System.Threading.Interlocked.Increment(ref _value);
-}
-"@
-
-    $warningCount = [Ookii.Scripts.InterlockedInt32]::new()
+    $invalidLinks = [System.Collections.Concurrent.ConcurrentBag[LinkInfo]]::new()
 }
 process {
     if ($Path) {
@@ -47,43 +41,59 @@ process {
 
     foreach ($item in $items) {
         $inCode = $false
+        $line = 0
         $links = Get-Content $item | ForEach-Object {
+            $line += 1
             if ($_.StartsWith('```')) {
                 $inCode = -not $inCode
             }
 
-            if (-not $inCode) {
+            if (-not $inCode) {                
                 $m = $_ | Select-String '(?<!!)\[.*?\]\((?<link>.*?)\)' -AllMatches -CaseSensitive
                 if ($m) {
                     $m.Matches | ForEach-Object {
-                        $_.Groups["link"].Value
+                        $linkInfo = [LinkInfo]::new()
+                        $linkInfo.Path = $item.FullName
+                        $linkInfo.Line = $line
+                        $linkInfo.Link = $_.Groups["link"].Value
+                        $linkInfo
                     }
                 }
 
                 if ($_ -match "\[[^\]]*$") {
                     Write-Warning "Possible multiline link not checked: $_"
-                    $warningCount.Increment()
+                    $linkInfo = [LinkInfo]::new()
+                    $linkInfo.Path = $item.FullName
+                    $linkInfo.Line = $line
+                    $linkInfo.Warning = "Possible multiline link not checked"
+                    $invalidLinks.Add($linkInfo)
                 }
 
-                if ($_ -match "^\[[^\]]*\]:\s*(?<link>.*)$") {
-                    $Matches["link"]
+                if ($_ -match "^\[[^^][^\]]*\]:\s*(?<link>.*)$") {
+                    $linkInfo = [LinkInfo]::new()
+                    $linkInfo.Path = $item.FullName
+                    $linkInfo.Line = $line
+                    $linkInfo.Link = $Matches["link"]
+                    $linkInfo
                 }
             }
         }
 
         $links | Foreach-Object -Parallel {
-            $count = $using:warningCount
-            $link = $_
+            $invalid = $using:invalidLinks
+            $info = $_
+            $link = $info.Link
             $index = $link.IndexOf("#")
             $anchor = $null
             if ($index -ge 0) {
                 $link = $link.Substring(0, $index)
-                $anchor = $_.Substring($index + 1)
+                $anchor = $_.Link.Substring($index + 1)
             }
 
             if ($link.Contains("\")) {
                 Write-Warning "Contains backslash: $link"
-                $count.Increment()
+                $info.Warning = "Contains backslash"
+                $invalid.Add($info)
             }
 
             if ($link.Contains("://")) {
@@ -92,7 +102,8 @@ process {
                     Write-Host "OK: $link"
                 } else {
                     Write-Warning "Status $($result.StatusCode): $link"
-                    $count.Increment()
+                    $info.Warning = "Status $($result.StatusCode)"
+                    $invalid.Add($info)
                 }
             } else {
                 if ($link -eq "") {
@@ -108,33 +119,39 @@ process {
                 if ($link -eq "" -or (Test-Path $fullPath)) {
                     . "$using:PSScriptRoot/common.ps1"
                     if ($anchor -and (-not (Resolve-AnchorTarget $fullPath $anchor))) {
-                        Write-Warning "Anchor not found: $_"
-                        $count.Increment()
+                        Write-Warning "Anchor not found: $($_.Link)"
+                        $info.Warning = "Anchor not found"
+                        $invalid.Add($info)
                     } else {
                         $canonical = &"$using:PSScriptRoot/../Get-CanonicalPath.ps1" $fullPath
                         if ($link -eq "" -or $canonical.EndsWith($pathTail)) {
-                            Write-Host "OK: $_"
+                            Write-Host "OK: $($_.Link)"
 
                         } else {
                             Write-Warning "Wrong case: $link ($fullPath != $canonical)"
-                            $count.Increment()
+                            $info.Warning = "Wrong case ($fullPath != $canonical)"
+                            $invalid.Add($info)
                         }
                     }
                 } else {
                     Write-Warning "Not found: $link"
-                    $count.Increment()
-                }
+                    $info.Warning = "Not found"
+                    $invalid.Add($info)
+            }
             }
         }
     }
 }
 end {
     Write-Host ""
-    if ($warningCount.Value -eq 0) {
+    if ($invalidLinks.Count -eq 0) {
         $color = "Green"
     } else {
         $color = "Yellow"
     }
 
-    Write-Host "$($warningCount.Value) warnings" -ForegroundColor $color
+    Write-Host "$($invalidLinks.Count) warnings" -ForegroundColor $color
+    $invalidLinks | ForEach-Object {
+        Write-Host "$($_.Path):$($_.Line) $($_.Link): $($_.Warning)" -ForegroundColor $color
+    }
 }
