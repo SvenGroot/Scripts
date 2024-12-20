@@ -18,9 +18,10 @@ function Resolve-Reference([string]$folder, [string]$reference, $refs) {
     $isMethod = $false
     $original = $reference
     $originalNoParens = $reference
-    if ($reference.EndsWith("()")) {
+    $index = $reference.IndexOf("(")
+    if ($index -ge 0) {
         $isMethod = $true
-        $reference = $reference.Substring(0, $reference.Length-2)
+        $reference = $reference.Substring(0, $index)
         $originalNoParens = $reference
     }
 
