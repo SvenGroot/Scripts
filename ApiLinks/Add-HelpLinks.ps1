@@ -44,7 +44,7 @@ process {
             Write-Host $_
 
             # Check for existing labels.
-            $regex = '^\[(?<label>.*?)\]:\s*(?<target>.*?)\s*$'
+            $regex = '^\[(?<label>[^^].*?)\]:\s*(?<target>.*?)\s*$'
             if ($_ -cmatch $regex) {
                 $existingLabels[$Matches.label] = $Matches.target
                 return
